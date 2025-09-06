@@ -1,0 +1,2 @@
+cd olololo
+ls ol ol o12 99 --ls
