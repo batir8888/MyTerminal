@@ -1,0 +1,4 @@
+{
+  "root.md": "# Root\n",
+  "lvl1": { "lvl2": { "lvl3": { "note.txt": "deep\n" }, "file.txt": "L2\n" } }
+}
