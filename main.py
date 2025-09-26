@@ -5,9 +5,8 @@ import shlex
 import sys
 import tkinter as tk
 from typing import Dict, Any, Tuple, List
-import numpy
 
-root = None
+root: tk.Tk = None
 text_area: tk.Text = None
 input_entry: tk.Entry = None
 history = []
