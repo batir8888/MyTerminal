@@ -1,9 +1,11 @@
 import base64
+import calendar
 import json
 import os
 import shlex
 import sys
 import tkinter as tk
+from datetime import datetime
 from typing import Dict, Any, Tuple, List
 
 root: tk.Tk = None
@@ -22,6 +24,7 @@ script_path = ""
 VFS: Dict[str, Any] = {}
 CWD: List[str] = []
 
+
 def load_vfs_from_json(path: str):
     global VFS, CWD
     with open(path, "r", encoding="utf-8") as f:
@@ -29,30 +32,34 @@ def load_vfs_from_json(path: str):
     VFS = normalize_vfs(spec)
     CWD = []
 
+
 def normalize_vfs(spec: Dict[str, Any]) -> Dict[str, Any]:
     if "type" in spec:
         return spec
-    return {"type":"dir","children":_normalize_children(spec)}
+    return {"type": "dir", "children": _normalize_children(spec)}
+
 
 def _normalize_children(tree: Dict[str, Any]) -> Dict[str, Any]:
     out = {}
     for name, val in tree.items():
         if isinstance(val, dict):
-            node = {"type":"dir","children":_normalize_children(val)}
+            node = {"type": "dir", "children": _normalize_children(val)}
         elif isinstance(val, str):
-            node = {"type":"file","encoding":"utf8","data":val}
+            node = {"type": "file", "encoding": "utf8", "data": val}
         elif isinstance(val, bytes):
-            node = {"type":"file","encoding":"base64","data":base64.b64encode(val).decode("ascii")}
+            node = {"type": "file", "encoding": "base64", "data": base64.b64encode(val).decode("ascii")}
         else:
             raise ValueError(f"Unsupported VFS value for '{name}'")
         out[name] = node
     return out
+
 
 def _node_by_stack(stack):
     node = VFS
     for comp in stack:
         node = node["children"][comp]
     return node
+
 
 def resolve(path: str):
     stack = [] if path.startswith("/") else list(CWD)
@@ -86,6 +93,7 @@ def list_dir(target: Dict[str, Any]) -> List[Tuple[str, str]]:
     items.sort(key=lambda x: (x[1] != "dir", x[0].lower()))
     return items
 
+
 def read_file(node: Dict[str, Any]) -> str:
     if node.get("type") != "file":
         raise TypeError("Not a file")
@@ -103,16 +111,19 @@ def read_file(node: Dict[str, Any]) -> str:
     else:
         return f"<unknown encoding: {enc}>"
 
+
 def print_debug_info():
     append_output(f"[DEBUG] VFS path: {vfs_path or '<not set>'}\n")
     append_output(f"[DEBUG] Startup script: {script_path or '<not set>'}\n")
     append_output("[DEBUG] --- Configuration loaded ---\n\n")
+
 
 def append_output(s: str):
     text_area.config(state=tk.NORMAL)
     text_area.insert(tk.END, s)
     text_area.see(tk.END)
     text_area.config(state=tk.DISABLED)
+
 
 def execute_command(cmd_str, is_from_script=False):
     global history_index, CWD
@@ -122,8 +133,9 @@ def execute_command(cmd_str, is_from_script=False):
             append_output("\n")
         return False
 
+    # Добавляем КАЖДУЮ команду в историю, включая из скрипта
+    history.append(cmd_str)
     if not is_from_script:
-        history.append(cmd_str)
         history_index = len(history)
 
     try:
@@ -136,8 +148,86 @@ def execute_command(cmd_str, is_from_script=False):
                 root.destroy()
             return True
 
-        elif cmd in ["ls", "cd"]:
-            output = f"{cmd} called with args: {args}\n"
+        elif cmd == "ls":
+            try:
+                path = args[0] if args else "."
+                stack, target = resolve(path)
+                items = list_dir(target)
+                output = ""
+                for name, node_type in items:
+                    if node_type == "dir":
+                        output += f"{name}/\n"
+                    else:
+                        output += f"{name}\n"
+            except (TypeError, KeyError) as e:
+                output = f"ls: {str(e)}\n"
+
+        elif cmd == "cd":
+            try:
+                path = args[0] if args else "/"
+                stack, target = resolve(path)
+                if target.get("type") != "dir":
+                    output = "cd: Not a directory\n"
+                else:
+                    CWD = stack
+                    output = ""
+            except (TypeError, KeyError) as e:
+                output = f"cd: {str(e)}\n"
+
+        elif cmd == "history":
+            if not args:
+                output = "\n".join([f"{i + 1}  {h}" for i, h in enumerate(history)]) + "\n"
+            else:
+                output = f"history: too many arguments\n"
+
+        elif cmd == "cal":
+            try:
+                if not args:
+                    year = datetime.now().year
+                    month = datetime.now().month
+                elif len(args) == 1:
+                    month = int(args[0])
+                    year = datetime.now().year
+                    if month < 1 or month > 12:
+                        raise ValueError("month must be 1-12")
+                elif len(args) == 2:
+                    month = int(args[0])
+                    year = int(args[1])
+                    if month < 1 or month > 12:
+                        raise ValueError("month must be 1-12")
+                else:
+                    output = f"cal: too many arguments\n"
+                    raise ValueError("too many args")
+
+                cal_text = calendar.month(year, month)
+                output = cal_text + "\n"
+            except ValueError as e:
+                output = f"cal: invalid argument - {str(e)}\n"
+
+        elif cmd == "head":
+            try:
+                if not args:
+                    output = "head: missing file operand\n"
+                else:
+                    path = args[0]
+                    lines_count = 10
+                    if len(args) > 1 and args[0].startswith("-n"):
+                        lines_count = int(args[0][2:])
+                        path = args[1]
+                    elif len(args) > 1:
+                        output = f"head: invalid option -- '{args[1]}'\n"
+                        raise ValueError("invalid option")
+
+                    stack, node = resolve(path)
+                    content = read_file(node)
+                    lines = content.splitlines()
+                    selected_lines = lines[:lines_count]
+                    output = "\n".join(selected_lines) + "\n"
+            except (TypeError, KeyError) as e:
+                output = f"head: {str(e)}\n"
+            except ValueError:
+                output = ""
+
         else:
             output = f"Command '{cmd}' not found.\n"
 
@@ -155,6 +245,7 @@ def on_enter(event=None):
     execute_command(cmd_str)
     return "break"
 
+
 def on_history_up(event=None):
     global history_index
     if not history:
@@ -163,6 +254,7 @@ def on_history_up(event=None):
     input_entry.delete(0, tk.END)
     input_entry.insert(0, history[history_index])
     return "break"
+
 
 def on_history_down(event=None):
     global history_index
@@ -173,6 +265,7 @@ def on_history_down(event=None):
     if history_index < len(history):
         input_entry.insert(0, history[history_index])
     return "break"
+
 
 def run_startup_script():
     if not script_path or not os.path.isfile(script_path):
@@ -190,6 +283,7 @@ def run_startup_script():
             root.after(100, root.destroy)
             return
 
+
 def parse_cli_args():
     global vfs_path, script_path
     args = sys.argv[1:]
@@ -204,11 +298,14 @@ def parse_cli_args():
         else:
             i += 1
 
+
 def check_vfs_exists(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.R_OK)
 
+
 class NoVfsException(Exception):
     pass
+
 
 def main():
     global root, text_area, input_entry
@@ -239,7 +336,7 @@ def main():
     input_entry = tk.Entry(input_frame, font=("Courier", 12))
     input_entry.grid(row=0, column=0, sticky="ew")
     run_btn = tk.Button(input_frame, text="Run", command=on_enter)
-    run_btn.grid(row=0, column=1, padx=(5,0))
+    run_btn.grid(row=0, column=1, padx=(5, 0))
 
     input_entry.bind("<Return>", on_enter)
     input_entry.bind("<Up>", on_history_up)
@@ -252,6 +349,7 @@ def main():
 
     input_entry.focus_set()
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()

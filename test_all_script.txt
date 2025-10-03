@@ -1,16 +1,15 @@
 # базовые проверки
 ls
-ls /
-ls /nope
-cd /
-ls
 cd lvl1/lvl2
 ls
 cd ..
 ls
-cd lvl3
+cd lvl2
+cal
+history
 ls
+head file.txt
+cd ..
 cd /
-# ошибки
-cd /root.md
-ls /nope
+history
+
