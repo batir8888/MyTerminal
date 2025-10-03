@@ -12,4 +12,10 @@ head file.txt
 cd ..
 cd /
 history
+mkdir der
+cd der
+touch file.txt
+ls
+history
+cal 1 2026
 

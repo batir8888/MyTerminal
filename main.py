@@ -61,7 +61,7 @@ def _node_by_stack(stack):
     return node
 
 
-def resolve(path: str):
+def resolve(path: str, create_dirs: bool = False):
     stack = [] if path.startswith("/") else list(CWD)
     parts = [p for p in path.split("/") if p]
     node = _node_by_stack(stack)
@@ -78,7 +78,12 @@ def resolve(path: str):
             raise TypeError("Not a directory")
         children = node.get("children", {})
         if part not in children:
-            raise KeyError("No such file or directory")
+            if create_dirs:
+                # Создаём промежуточные директории при необходимости
+                children[part] = {"type": "dir", "children": {}}
+                node["children"] = children
+            else:
+                raise KeyError("No such file or directory")
         stack.append(part)
         node = children[part]
     return stack, node
@@ -110,6 +115,79 @@ def read_file(node: Dict[str, Any]) -> str:
             return "<binary invalid base64>"
     else:
         return f"<unknown encoding: {enc}>"
+
+
+def create_file(path: str):
+    # Разделяем путь на родительскую директорию и имя файла
+    if path.startswith("/"):
+        parent_path = "/".join(path.split("/")[:-1]) or "/"
+        filename = path.split("/")[-1]
+    else:
+        parts = path.split("/")
+        if len(parts) == 1:
+            parent_path = "."
+            filename = parts[0]
+        else:
+            parent_path = "/".join(parts[:-1])
+            filename = parts[-1]
+
+    if not filename:
+        raise ValueError("Invalid file name")
+
+    # Получаем родительскую директорию (создаём при необходимости для touch)
+    parent_stack, parent_node = resolve(parent_path, create_dirs=False)
+    if parent_node.get("type") != "dir":
+        raise TypeError("Parent is not a directory")
+
+    # Создаём пустой файл
+    parent_node["children"][filename] = {"type": "file", "encoding": "utf8", "data": ""}
+
+
+def create_directory(path: str, parents: bool = False):
+    # Определяем начальный стек и части пути
+    if path.startswith("/"):
+        stack = []
+        parts = [p for p in path.split("/") if p]
+    else:
+        stack = list(CWD)
+        parts = [p for p in path.split("/") if p]
+
+    if not parts:
+        raise ValueError("Cannot create root directory")
+
+    node = _node_by_stack(stack)
+
+    # Проходим по всем частям пути, кроме последней
+    for i, part in enumerate(parts[:-1]):
+        if node.get("type") != "dir":
+            raise TypeError("Not a directory")
+        children = node.get("children", {})
+        if part not in children:
+            if parents:
+                children[part] = {"type": "dir", "children": {}}
+                node["children"] = children
+            else:
+                raise KeyError("No such file or directory")
+        stack.append(part)
+        node = children[part]
+
+    # Обрабатываем последнюю часть (саму создаваемую директорию)
+    last_part = parts[-1]
+    if node.get("type") != "dir":
+        raise TypeError("Parent is not a directory")
+
+    children = node.get("children", {})
+    if last_part in children:
+        # Директория или файл с таким именем уже существует
+        existing_node = children[last_part]
+        if existing_node.get("type") == "dir":
+            raise FileExistsError("File exists")
+        else:
+            raise FileExistsError("Not a directory")  # или просто "File exists"
+    else:
+        # Создаём новую директорию
+        children[last_part] = {"type": "dir", "children": {}}
+        node["children"] = children
 
 
 def print_debug_info():
@@ -228,6 +306,52 @@ def execute_command(cmd_str, is_from_script=False):
             except ValueError:
                 output = ""
 
+        elif cmd == "touch":
+            if not args:
+                output = "touch: missing file operand\n"
+            else:
+                try:
+                    for path in args:
+                        # Проверяем, существует ли уже файл или директория с таким именем
+                        try:
+                            stack, node = resolve(path)
+                            # Если существует и это файл - обновляем его (оставляем пустым)
+                            if node.get("type") == "file":
+                                node["data"] = ""
+                            # Если это директория - ошибка
+                            elif node.get("type") == "dir":
+                                output = f"touch: {path}: Is a directory\n"
+                                raise TypeError("Is a directory")
+                        except (KeyError, TypeError):
+                            # Файл не существует - создаём новый
+                            create_file(path)
+                    output = ""
+                except (TypeError, KeyError, ValueError) as e:
+                    if "Is a directory" not in str(e):
+                        output = f"touch: {str(e)}\n"
+
+        elif cmd == "mkdir":
+            if not args:
+                output = "mkdir: missing operand\n"
+            else:
+                parents = False
+                paths = args
+                if args[0] == "-p":
+                    parents = True
+                    paths = args[1:]
+                    if not paths:
+                        output = "mkdir: missing operand\n"
+                        raise ValueError("missing operand")
+
+                try:
+                    for path in paths:
+                        create_directory(path, parents=parents)
+                    output = ""
+                except FileExistsError as e:
+                    output = f"mkdir: cannot create directory '{paths[0]}': File exists\n"
+                except (TypeError, KeyError, ValueError) as e:
+                    output = f"mkdir: {str(e)}\n"
+
         else:
             output = f"Command '{cmd}' not found.\n"
 
@@ -238,6 +362,7 @@ def execute_command(cmd_str, is_from_script=False):
         append_output(f"$ {cmd_str}\n")
     append_output(output)
     return False
+
 
 def on_enter(event=None):
     cmd_str = input_entry.get().strip()
