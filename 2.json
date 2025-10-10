@@ -1,0 +1,19 @@
+{
+  "index.html": "<!DOCTYPE html>\n<html>\n<head><title>VFS Site</title></head>\n<body><h1>Привет!</h1></body>\n</html>",
+  "assets": {
+    "css": {
+      "style.css": "body { font-family: sans-serif; }\nh1 { color: #333; }"
+    },
+    "img": {
+      "logo.png": "[BINARY_PLACEHOLDER]"
+    }
+  },
+  "data": {
+    "config.json": "{\n  \"debug\": true,\n  \"version\": \"2.0\"\n}",
+    "users": {
+      "alice.txt": "role: admin\nstatus: active",
+      "bob.txt": "role: user\nstatus: inactive"
+    }
+  },
+  "notes.txt": "Это простая VFS для демонстрации структуры."
+}

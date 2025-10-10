@@ -1,0 +1,14 @@
+{
+  "readme.md": "# Добро пожаловать!\nЭто корень VFS.",
+  "docs": {
+    "api.md": "## API документация\nОписание методов...",
+    "changelog.txt": "v1.0 — первая версия\nv1.1 — добавлены новые функции"
+  },
+  "src": {
+    "main.py": "print('Hello from VFS!')\n",
+    "utils": {
+      "helpers.py": "def greet():\n    return 'Hi!'\n"
+    }
+  },
+  "LICENSE": "MIT License\nCopyright (c) 2024"
+}
